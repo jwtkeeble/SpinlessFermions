@@ -245,3 +245,4 @@ for epoch in range(start, epochs+1):
     sys.stdout.write("Epoch: %6i | Energy: %6.4f +/- %6.4f | CI: %6.4f | Walltime: %4.2e (s)        \r" % (epoch, energy_mean, energy_var.sqrt(), gs_CI, end-start))
     sys.stdout.flush()
 
+print("Done")
