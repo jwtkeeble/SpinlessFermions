@@ -27,6 +27,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
+import colorcet as cc
 
 import argparse
 
@@ -120,7 +121,7 @@ with torch.no_grad():
 
         s = torch.rand_like(x)*(xmax-xmin) + xmin #uniform rand in range [xmin, xmax)
 
-        configurations[batch, ...] = x.detach() #check clone
+        configurations[batch, :, :] = x.detach().clone() #check clone
 
         xp = x.clone() #ghost-particle method for computing one-body density matrix
         xp[:,0] = s[:,0]
@@ -128,17 +129,77 @@ with torch.no_grad():
         sgn_p, logabs_p = net(xp)
         sgn, logabs = net(x)
 
-        xdata[batch, ...] = x[:,0]
-        ydata[batch, ...] = xp[:, 0]
-        zdata[batch, ...] = ((xmax-xmin) * sgn_p*sgn * torch.exp(logabs_p-logabs))
+        #print(x.shape, xp.shape)
+
+        xdata[batch, :] = x[:,0]
+        ydata[batch, :] = xp[:, 0]
+        zdata[batch, :] = ((xmax-xmin) * sgn_p*sgn * torch.exp(logabs_p-logabs))
 
 def to_numpy(x: Tensor) -> np.ndarray:
     x=x.detach().cpu().numpy()
     return x
 
-plt.hist(configurations[...,0])
+#Histogram kwargs
+nbins=250
 
-#counts, bins = np.histogram(a=to_numpy(xdata.flatten()), range=(-5,5), bins=100, density=True)
-#plt.stairs(counts, bins)
-plt.hist(x=to_numpy(xdata[:,0].flatten()), range=(-5,5), bins=100, density=True)
+#One-Body Density 
+x = x.flatten().detach().cpu().numpy()
+counts, bins = np.histogram(a=x, range=(xmin,xmax), bins=nbins, density=True)
+plt.stairs(counts, bins)
+plt.show()
+
+#One-Body Density Matrix
+xx = xdata.flatten().cpu().detach().numpy() #these are in fm, need to be in ho?
+yy = ydata.flatten().cpu().detach().numpy()
+p = nfermions * zdata.flatten().cpu().detach().numpy()
+p = np.nan_to_num(p, nan=0.)
+
+#nbins=250
+data_range = [[xmin, xmax], [xmin, xmax]]
+
+#need a method without negative weights
+H, xedges, yedges = np.histogram2d(xx, yy, bins=[nbins,nbins], range=data_range, weights=p, density=True)
+
+rho_matrix = nfermions * H / np.trace(H)
+#symmetrize?
+eigenvalues, eigenvectors = np.linalg.eigh(rho_matrix)
+eigen_idx = np.argsort(eigenvalues)[::-1]
+
+sorted_eigenvalues = eigenvalues[eigen_idx]
+sorted_eigenvectors = eigenvectors[:, eigen_idx]
+
+#import colorcet
+cmap=plt.cm.bwr
+norm=colors.TwoSlopeNorm(vmin=np.min(rho_matrix), vmax=np.max(rho_matrix), vcenter=0.)
+
+sc=plt.pcolormesh(xedges, yedges, rho_matrix, cmap=cmap, norm=norm)
+#plt.contour(xedges, yedges, rho_matrix, color='black')
+plt.colorbar(sc)
+plt.show()
+
+#Natural Orbitals
+xvals = xedges[:-1] + np.diff(xedges)/2.
+
+for i in range(nfermions):
+    plt.plot(xvals, sorted_eigenvectors[:,i], label="%i" % (i))
+plt.legend()
+plt.show()
+
+#Two-body density matrix
+import math
+def binomial_coeff(n,r):
+    return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
+
+xxdata = configurations[:,:,:2].reshape(-1, 2).cpu().detach().numpy()
+
+bin_width = (xmax-xmin)/nbins
+weight_tbdm = (binomial_coeff(nfermions, 2) / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
+
+h_tbdm, xedges_tbdm, yedges_tbdm = np.histogram2d(xxdata[:,0], xxdata[:,1],
+                                                  bins=[nbins, nbins], weights=weight_tbdm,
+                                                  range=[[xmin, xmax],[xmin, xmax]],
+                                                  density=False)
+
+sc_tbdm=plt.pcolormesh(xedges_tbdm, yedges_tbdm, h_tbdm)
+plt.colorbar(sc_tbdm)
 plt.show()
