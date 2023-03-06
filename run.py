@@ -195,22 +195,19 @@ for epoch in range(start, epochs+1):
     x, _ = sampler(n_sweeps)
 
     params = get_params(net)
-    #print("elocal")
+
     elocal = xmap(calc_elocal, in_dims=(None, 0), chunks=nchunks)(params, x)
-    #print("done")
     elocal = clip(elocal, clip_factor=5)
 
     _, logabs = net(x)
-    #_, logabs = xmap(fnet, in_dims=(None, 0), chunks=nchunks)(params, x)
-    #print(logabs.shape)
-    print("Elocal: ",elocal)
+
     loss_elocal = 2.*((elocal - torch.mean(elocal)).detach() * logabs)
-    #print("loss (elocal): ",loss_elocal)
+    
     with torch.no_grad():
         energy_var, energy_mean = torch.var_mean(elocal, unbiased=True)
 
     loss=torch.mean(loss_elocal)   
-    #print("loss: ",loss.shape)
+    
     optim.zero_grad()
     loss.backward()  #populates leafs with grads
     optim.step()
