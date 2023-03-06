@@ -186,21 +186,6 @@ net=output_dict['net']
 optim=output_dict['optim']
 sampler=output_dict['sampler']
 
-
-x, _ = sampler(n_sweeps)
-
-params = get_params(net=net)
-
-elocal = xmap(calc_elocal, in_dims=(None, 0), chunks=nchunks)(params, x)
-energy_var, energy_mean = torch.var_mean(elocal, unbiased=True)
-
-print(f"E: {energy_mean} +/- {energy_var}")
-import matplotlib.pyplot as plt
-elocal_np = elocal.cpu().detach().numpy()
-plt.hist(elocal_np, bins=100, density=True, range=(1.9,2.1))
-plt.show()
-
-"""
 #Energy Minimisation
 for epoch in range(start, epochs+1):
     stats={}
@@ -262,5 +247,4 @@ for epoch in range(start, epochs+1):
     #sys.stdout.write("Epoch: %6i | Energy: %6.8f +/- %6.8f | GS: %6.8f | Walltime: %4.2e(s)             \r" % (epoch, energy_mean, energy_var.sqrt(), gs, end-start))
     sys.stdout.write("Epoch: %6i | Energy: %6.4f +/- %6.4f | CI: %6.4f | Walltime: %4.2e (s)        \r" % (epoch, energy_mean, energy_var.sqrt(), gs_CI, end-start))
     sys.stdout.flush()
-"""
-print("\n")
+
