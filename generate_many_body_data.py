@@ -28,6 +28,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import colorcet as cc
+import math
 
 import argparse
 
@@ -98,10 +99,10 @@ optim = torch.optim.Adam(params=net.parameters(), lr=1e-4) #new optimizer
 
 model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
-                 optim, False, device, dtype)
+                 optim.__class__.__name__, False, device, dtype)
 filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.csv" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
-                 optim, False, device, dtype)
+                 optim.__class__.__name__, False, device, dtype)
 
 writer = load_dataframe(filename)
 output_dict = load_model(model_path=model_path, device=device, net=net, optim=optim, sampler=sampler)
@@ -139,67 +140,105 @@ def to_numpy(x: Tensor) -> np.ndarray:
     x=x.detach().cpu().numpy()
     return x
 
-#Histogram kwargs
-nbins=250
+analysis_datapath = "analysis/PHYS_A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.npz" % \
+                (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                 optim.__class__.__name__, False, device, dtype)
 
-#One-Body Density 
-x = x.flatten().detach().cpu().numpy()
-counts, bins = np.histogram(a=x, range=(xmin,xmax), bins=nbins, density=True)
-plt.stairs(counts, bins)
-plt.show()
+#======================================================================================#
 
-#One-Body Density Matrix
-xx = xdata.flatten().cpu().detach().numpy() #these are in fm, need to be in ho?
+nbins = 250#100
+
+def binomial_coeff(n,r):
+    return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
+
+#===============================================================#
+#              One-Body Density and Root-Mean-Square            #
+#===============================================================#
+
+sys.stdout.write("One-body Density: ")
+
+x = configurations.flatten().detach().cpu().numpy()
+
+n, bins = np.histogram(x, bins=nbins, range=(xmin, xmax), density=True)
+
+density_xx = bins[:-1] + np.diff(bins)/2.
+
+density_psi = nfermions*n
+
+rms = np.sum(density_psi * density_xx**2) / np.sum(density_psi)
+
+sys.stdout.write("DONE\n")
+
+#===============================================================#
+#                     One-Body Density Matrix                   #
+#===============================================================#
+
+sys.stdout.write("One-body Density Matrix: ")
+
+xx = xdata.flatten().cpu().detach().numpy()
 yy = ydata.flatten().cpu().detach().numpy()
 p = nfermions * zdata.flatten().cpu().detach().numpy()
+
+clamp = np.abs(np.array([xx.min(), xx.max(), yy.min(), yy.max()])).max()
+data_range = [[-clamp,clamp],[-clamp,clamp]]
+
 p = np.nan_to_num(p, nan=0.)
 
-#nbins=250
-data_range = [[xmin, xmax], [xmin, xmax]]
+h_obdm, xedges_obdm, yedges_obdm = np.histogram2d(xx,yy,
+                                                  bins=[nbins,nbins], range=data_range,
+                                                  weights=p, density=True)
+#trace norm the histogram
+rho_matrix = nfermions * h_obdm / np.trace(h_obdm)
 
-#need a method without negative weights
-H, xedges, yedges = np.histogram2d(xx, yy, bins=[nbins,nbins], range=data_range, weights=p, density=True)
+sys.stdout.write("DONE\n")
 
-rho_matrix = nfermions * H / np.trace(H)
-#symmetrize?
-eigenvalues, eigenvectors = np.linalg.eigh(rho_matrix)
-eigen_idx = np.argsort(eigenvalues)[::-1]
+#===============================================================#
+#                      Occupation Numbers                       #
+#===============================================================#
+
+sys.stdout.write("Occupation Numbers: ")
+
+eigenvalues, eigenvectors = np.linalg.eigh(rho_matrix) #diagonalize OBDM
+eigen_idx = np.argsort(eigenvalues)[::-1] #sort
 
 sorted_eigenvalues = eigenvalues[eigen_idx]
 sorted_eigenvectors = eigenvectors[:, eigen_idx]
 
-#import colorcet
-cmap=plt.cm.bwr
-norm=colors.TwoSlopeNorm(vmin=np.min(rho_matrix), vmax=np.max(rho_matrix), vcenter=0.)
+sys.stdout.write("DONE\n")
 
-sc=plt.pcolormesh(xedges, yedges, rho_matrix, cmap=cmap, norm=norm)
-#plt.contour(xedges, yedges, rho_matrix, color='black')
-plt.colorbar(sc)
-plt.show()
-
-#Natural Orbitals
-xvals = xedges[:-1] + np.diff(xedges)/2.
-
-for i in range(nfermions):
-    plt.plot(xvals, sorted_eigenvectors[:,i], label="%i" % (i))
-plt.legend()
-plt.show()
-
-#Two-body density matrix
-import math
-def binomial_coeff(n,r):
-    return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
+#===============================================================#
+#              Two-Body Density (Pair-correlation)              #
+#===============================================================#
+sys.stdout.write("Two-body Density: ")
 
 xxdata = configurations[:,:,:2].reshape(-1, 2).cpu().detach().numpy()
 
 bin_width = (xmax-xmin)/nbins
-weight_tbdm = (binomial_coeff(nfermions, 2) / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
+weight = (binomial_coeff(nfermions, 2) / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
 
-h_tbdm, xedges_tbdm, yedges_tbdm = np.histogram2d(xxdata[:,0], xxdata[:,1],
-                                                  bins=[nbins, nbins], weights=weight_tbdm,
-                                                  range=[[xmin, xmax],[xmin, xmax]],
-                                                  density=False)
+h_tbd, xedges_tbd, yedges_tbd = np.histogram2d(xxdata[:,0], xxdata[:,1],
+                                               bins=[nbins, nbins], weights=weight,
+                                               range=[[xmin, xmax],[xmin, xmax]],
+                                               density=False)
+sys.stdout.write("DONE\n")
 
-sc_tbdm=plt.pcolormesh(xedges_tbdm, yedges_tbdm, h_tbdm)
-plt.colorbar(sc_tbdm)
-plt.show()
+#===============================================================#
+#                         Save the data                         #
+#===============================================================#
+sys.stdout.write("Saving file: ")
+
+data = {'nbins':nbins,
+        'V0':V0,
+        'rms':rms,
+        'density_xx':density_xx,
+        'density_psi':density_psi,
+        'h_obdm':h_obdm,
+        'xedges_obdm':xedges_obdm,
+        'yedges_obdm':yedges_obdm,
+        'h_tbd':h_tbd,
+        'xedges_tbd':xedges_tbd,
+        'yedges_tbd':yedges_tbd,
+        'eigenvalues':sorted_eigenvalues,
+        'eigenvectors':sorted_eigenvectors}
+np.savez_compressed(analysis_datapath, **data) #save
+sys.stdout.write("DONE\n")
