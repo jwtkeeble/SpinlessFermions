@@ -169,6 +169,6 @@ class MatrixToSLogDeterminant(nn.Module):
       :return out: the global sign and global logabs values of the signed
                    log-determinant values of the D Generalised Slater Matrices
     """
-    #sgn, logabs, _, _ = GeneralisedLogSumExpEnvLogDomainStable.apply(matrices, log_envs)
+    #sgn, logabs, _, _ = GeneralisedLogSumExpEnvLogDomainStable.apply(matrices, log_envs) #coming soon
     sgn, logabs = NaiveLogSumExpEnvLogDomainStable(matrices, log_envs)
     return sgn, logabs - 0.5*self.log_factorial

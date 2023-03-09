@@ -1,8 +1,12 @@
 import torch
 from torch import nn
 import numpy as np
+
+import matplotlib as mpl
 import matplotlib.pyplot as plt 
 import matplotlib.colors as colors
+
+import colorcet as cc
 
 import argparse
 
@@ -72,7 +76,7 @@ h_obdm = loaded['h_obdm']           #rho-matrix (OBDM)
 xedges_obdm = loaded['xedges_obdm'] 
 yedges_obdm = loaded['yedges_obdm']
 
-cmap=plt.cm.bwr
+cmap=mpl.colormaps['seismic'] #cwr #plt.cm.bwr
 norm=colors.TwoSlopeNorm(vmin=np.min(h_obdm), vmax=np.max(h_obdm), vcenter=0.)
 
 sc=plt.pcolormesh(xedges_obdm, yedges_obdm, h_obdm, cmap=cmap, norm=norm)
@@ -82,6 +86,13 @@ plt.show()
 
 eigenvalues = loaded['eigenvalues']
 eigenvectors = loaded['eigenvectors']
+
+_eigen = eigenvalues[:nfermions]
+entropy = -np.sum(_eigen * np.log(_eigen))
+max_entropy = np.log(nfermions)
+
+print("Occupation Values: ",_eigen)
+print(f"Entropy: {entropy} | Max: {max_entropy}")
 
 xvals = xedges_obdm[:-1] + np.diff(xedges_obdm)/2.
 
@@ -94,6 +105,12 @@ h_tbd = loaded['h_tbd']
 xedges_tbd = loaded['xedges_tbd']
 yedges_tbd = loaded['yedges_tbd']
 
-sc_tbdm=plt.pcolormesh(xedges_tbd, yedges_tbd, h_tbd)
+sc_tbdm=plt.pcolormesh(xedges_tbd, yedges_tbd, h_tbd, cmap=cc.cm.fire)
 plt.colorbar(sc_tbdm)
+plt.show()
+
+xvals = xedges_tbd[:-1] + np.diff(xedges_tbd)/2.
+pair_correlation = np.diagonal(h_tbd, offset=0, axis1=-2, axis2=-1)
+
+plt.plot(xvals, pair_correlation)
 plt.show()
