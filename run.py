@@ -1,7 +1,6 @@
 import torch
 from torch import nn, Tensor
-from functorch import make_functional
-from functorch.experimental import chunk_vmap as xmap
+
 import os, sys, time
 
 torch.manual_seed(0)
@@ -78,10 +77,9 @@ sampler = MetropolisHastings(network=net,
                              target_acceptance=target_acceptance)
 
 
-net.pretrain=False
-fnet, params = make_functional(net)
 
-calc_elocal = HOw1D(fnet=fnet, V0=V0, sigma0=sigma0, nchunks=nchunks)
+
+calc_elocal = HOw1D(net=net, V0=V0, sigma0=sigma0, nchunks=nchunks)
 
 HO = HermitePolynomialMatrix(num_particles=nfermions)
 
@@ -194,9 +192,7 @@ for epoch in range(start, epochs+1):
 
     x, _ = sampler(n_sweeps)
 
-    params = get_params(net)
-
-    elocal = xmap(calc_elocal, in_dims=(None, 0), chunks=nchunks)(params, x)
+    elocal = calc_elocal(x)
     elocal = clip(elocal, clip_factor=5)
 
     _, logabs = net(x)
@@ -211,8 +207,6 @@ for epoch in range(start, epochs+1):
     optim.zero_grad()
     loss.backward()  #populates leafs with grads
     optim.step()
-
-    #update_lr(1e-4, epoch, optim)
 
     end = sync_time()
 
@@ -241,7 +235,6 @@ for epoch in range(start, epochs+1):
                     model_path)
         writer.write_to_file(filename)
 
-    #sys.stdout.write("Epoch: %6i | Energy: %6.8f +/- %6.8f | GS: %6.8f | Walltime: %4.2e(s)             \r" % (epoch, energy_mean, energy_var.sqrt(), gs, end-start))
     sys.stdout.write("Epoch: %6i | Energy: %6.4f +/- %6.4f | CI: %6.4f | Walltime: %4.2e (s)        \r" % (epoch, energy_mean, energy_var.sqrt(), gs_CI, end-start))
     sys.stdout.flush()
 

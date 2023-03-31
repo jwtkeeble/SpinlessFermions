@@ -7,8 +7,6 @@ import numpy as np
 import os, warnings
 from Writers import WriteToFile
 
-from functorch.experimental import chunk_vmap as xmap
-from functorch import make_functional
 
 def unsqueeze_to_size(m: Tensor, s: int) -> Tensor:
    cur = len(m.shape)
@@ -24,8 +22,9 @@ def count_parameters(model: nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def get_params(net, requires_grad: bool=False):
-    _, params = make_functional(net)
-    return [p.requires_grad_(requires_grad) for p in params]
+    #_, params = make_functional(net)
+    #return [p.requires_grad_(requires_grad) for p in params]
+    raise ValueError("")
 
 def sync_time() -> None:
     torch.cuda.synchronize()
@@ -166,7 +165,7 @@ def get_batches_of_measurements(nbatches: int, nwalkers: int, sampler: nn.Module
     samples[batch, :] = calc_local_energy(X).detach_() #just save mean values? compare with autocorrelation method?
 
   return samples
-
+"""
 def get_batches_of_local_energies(calc_elocal: Callable,
                                   sampler: nn.Module,
                                   nbatches: int,
@@ -186,7 +185,7 @@ def get_batches_of_local_energies(calc_elocal: Callable,
       samples[batch, :] = xmap(calc_elocal, in_dims=(None, 0), chunks=chunks)(params, x).detach_().to(storage_device)
     return samples
 
-
+"""
 def round_to_err(x, dx):
     """
     Rounds x to first significant figure of dx (i.e. +- 1 sig fig of error)

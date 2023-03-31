@@ -72,25 +72,15 @@ class GeneralisedLogSumExpEnvLogDomainStableBackward(Function):
     detU, detVT = torch.linalg.det(U), torch.linalg.det(VT)      #both shape [B,D]
     log_G = get_log_gamma(S.log())                               #shape [B, D, A] (just the diagonal)
 
-    #print("log_G/global_logabs/globl_log unsq: ",log_G.shape, print(global_logabs.shape), unsqueeze_to_size(global_logabs, len(log_G.shape)).shape)
-    #normed_G = torch.exp( log_G - global_logabs[:,None,None] )   #shape [B,D,A]
-    normed_G = torch.exp( log_G - global_logabs[...,None,None] ) #without batch? #potential broadcast ERROR
+    normed_G = torch.exp( log_G - global_logabs[...,None,None] ) 
 
     U_normed_G_VT = U @ normed_G.diag_embed() @ VT
     U_normed_G_VT_exp_log_envs = torch.exp(log_envs)*U_normed_G_VT
 
-    #sgn_prefactor = ((grad_global_logabs * global_sgn)[:,None] * detU * detVT)[:,:,None,None] 
-    #print("logabs/sgn/U/VT: ",grad_global_logabs.shape, global_sgn.shape, detU.shape, detVT.shape)
     sgn_prefactor = ((grad_global_logabs * global_sgn)[...,None] * detU * detVT)[...,None,None]
-    #sgn_prefactor = unsqueeze_to_size(m=(unsqueeze_to_size( m=(grad_global_logabs * global_sgn), s=len(detU.shape)) * detU * detVT), s=len(matrices.shape))
-    
-    #without batch? #potential broadcast ERROR
-    #print(sgn_prefactor.shape, U_normed_G_VT_exp_log_envs.shape)
+
     dLoss_dA = sgn_prefactor * U_normed_G_VT_exp_log_envs
     dLoss_dS = matrices * dLoss_dA
-
-    #ctx.save_for_backward(U, S, VT, matrices, log_envs, detU, detVT, normed_G, sgn_prefactor, \
-    #                      U_normed_G_VT_exp_log_envs, grad_global_logabs,  global_sgn, global_logabs)
 
     return dLoss_dA, dLoss_dS, U, S, VT, matrices, log_envs, detU, detVT, normed_G, sgn_prefactor, \
                           U_normed_G_VT_exp_log_envs, grad_global_logabs,  global_sgn, global_logabs
@@ -117,9 +107,6 @@ class GeneralisedLogSumExpEnvLogDomainStableBackward(Function):
 
     #Calculate normed rho matrices
     log_rho = get_log_rho(S.log())
-    #normed_rho = torch.exp( log_rho - global_logabs[:,None,None,None] + log_envs_max)
-    #print("log_rho/global_log/global_log unsq/log_envs_max): ",log_rho.shape, global_logabs.shape, unsqueeze_to_size(global_logabs, s=len(log_rho.shape)).shape, log_envs_max.shape)
-    #normed_rho = torch.exp( log_rho - unsqueeze_to_size(global_logabs, s=len(log_rho.shape)) + log_envs_max) #without batch? #potential broadcast ERROR
     normed_rho = torch.exp( log_rho - global_logabs[...,None,None,None] + log_envs_max)
 
     #Calculate normed Xi matrices
@@ -130,10 +117,6 @@ class GeneralisedLogSumExpEnvLogDomainStableBackward(Function):
     #calculate c constant; sum(dim=(-2,-1)) is summing over kl or mn ; sum(..., dim=-1) is summing over determinants
     c = global_sgn * torch.sum( detU * detVT * torch.sum( (grad_G + matrices * grad_H ) * U_normed_G_VT_exp_log_envs, dim=(-2,-1) ), dim=-1)
 
-    #normed_Xi_minus_c_normed_G = (normed_Xi - c[:,None,None,None]*normed_G.diag_embed()) 
-    #print("c/norm XI: ",c.shape, normed_Xi.shape)
-    #normed_Xi_minus_c_normed_G = (normed_Xi - unsqueeze_to_size(m=c, s=len(normed_Xi.shape))*normed_G.diag_embed()) #without batch? #potential broadcast ERROR
-    #print("c: ",c.shape, c[...,None,None,None].shape)
     normed_Xi_minus_c_normed_G = (normed_Xi - c[...,None,None,None]*normed_G.diag_embed()) 
 
     U_Xi_c_G_VT =  U @ normed_Xi_minus_c_normed_G @ VT

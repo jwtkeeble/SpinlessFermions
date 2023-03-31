@@ -1,0 +1,2 @@
+,epoch,loss,energy_mean,energy_std,CI,proposal_width,acceptance_rate,walltime
+0,0,-0.002563554614463093,1.9990821485324535,0.010525484690065992,1.9999999999999933,0.7227245055233195,"tensor(0.5007, device='cuda:0', dtype=torch.float32)",0.47186927400071
