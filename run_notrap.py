@@ -265,7 +265,6 @@ sampler=output_dict['sampler']
 from Hamiltonian import GaussianInteraction1D
 calc_local_energy_no_trap = GaussianInteraction1D(net=net, V0=V0, sigma0=sigma0)
 
-start=0
 for epoch in range(start, epochs+1):
     stats={}
 
