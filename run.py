@@ -1,3 +1,24 @@
+import argparse
+
+parser = argparse.ArgumentParser(prog="SpinlessFermions",
+                                 usage='%(prog)s [options]',
+                                 description="A Neural Quantum State (NQS) solution to one-dimensional fermions interacting in a Harmonic trap",
+                                 epilog="and fin")
+#https://stackoverflow.com/questions/14117415/in-python-using-argparse-allow-only-positive-integers/14117567
+
+parser.add_argument("-N", "--num_fermions", type=int,   default=2,     help="Number of fermions in physical system")
+parser.add_argument("-H", "--num_hidden",   type=int,   default=64,    help="Number of hidden neurons per layer")
+parser.add_argument("-L", "--num_layers",   type=int,   default=2,     help="Number of layers within the network")
+parser.add_argument("-D", "--num_dets",     type=int,   default=1,     help="Number of determinants within the network's final layer")
+parser.add_argument("-V", "--V0",           type=float, default=0.,    help="Interaction strength (in harmonic units)")
+parser.add_argument("-S", "--sigma0",       type=float, default=0.5,   help="Interaction distance (in harmonic units")
+parser.add_argument("--preepochs",          type=int,   default=1000, help="Number of pre-epochs for the pretraining phase")
+parser.add_argument("--epochs",             type=int,   default=10000, help="Number of epochs for the energy minimisation phase")
+parser.add_argument("-C", "--chunks",       type=int,   default=1,     help="Number of chunks for vectorized operations")
+parser.add_argument("--dtype",                     type=str,   default='float32',      help='Default dtype')
+
+args = parser.parse_args()
+
 import torch
 from torch import nn, Tensor
 
@@ -6,7 +27,13 @@ import os, sys, time
 torch.manual_seed(0)
 torch.set_printoptions(4)
 torch.backends.cudnn.benchmark=True
-torch.set_default_dtype(torch.float32)
+#torch.set_default_dtype(torch.float32)
+if(args.dtype == 'float32'):
+    torch.set_default_dtype(torch.float32)
+elif(args.dtype == 'float64'):
+    torch.set_default_dtype(torch.float64)
+else:
+    raise NameError(f"Unknown dtype: {args.dtype} selected!")
 
 device = torch.device('cuda')
 dtype = str(torch.get_default_dtype()).split('.')[-1]
@@ -20,25 +47,6 @@ from Pretraining import HermitePolynomialMatrix
 
 from utils import load_dataframe, load_model, count_parameters, get_groundstate
 from utils import get_params, sync_time, clip, calc_pretraining_loss
-
-import argparse
-
-parser = argparse.ArgumentParser(prog="SpinlessFermions",
-                                 usage='%(prog)s [options]',
-                                 description="A Neural Quantum State (NQS) solution to one-dimensional fermions interacting in a Harmonic trap",
-                                 epilog="and fin")
-
-parser.add_argument("-N", "--num_fermions", type=int,   default=2,     help="Number of fermions in physical system")
-parser.add_argument("-H", "--num_hidden",   type=int,   default=64,    help="Number of hidden neurons per layer")
-parser.add_argument("-L", "--num_layers",   type=int,   default=2,     help="Number of layers within the network")
-parser.add_argument("-D", "--num_dets",     type=int,   default=1,     help="Number of determinants within the network's final layer")
-parser.add_argument("-V", "--V0",           type=float, default=0.,    help="Interaction strength (in harmonic units)")
-parser.add_argument("-S", "--sigma0",       type=float, default=0.5,   help="Interaction distance (in harmonic units")
-parser.add_argument("--preepochs",          type=int,   default=10000, help="Number of pre-epochs for the pretraining phase")
-parser.add_argument("--epochs",             type=int,   default=10000, help="Number of epochs for the energy minimisation phase")
-parser.add_argument("-C", "--chunks",       type=int,   default=1,     help="Number of chunks for vectorized operations")
-
-args = parser.parse_args()
 
 nfermions = args.num_fermions #number of input nodes
 num_hidden = args.num_hidden  #number of hidden nodes per layer
@@ -137,7 +145,7 @@ for preepoch in range(start, preepochs+1):
 
     stats['epoch'] = [preepoch] 
     stats['loss_mean'] = mean_preloss.item()
-    stats['loss_std'] = stddev_preloss.item()
+    stats['loss_std'] = (stddev_preloss.pow(2) / nwalkers).sqrt().item()
     stats['proposal_width'] = sampler.sigma
     stats['acceptance_rate'] = sampler.acceptance_rate
     
@@ -201,6 +209,7 @@ for epoch in range(start, epochs+1):
     
     with torch.no_grad():
         energy_var, energy_mean = torch.var_mean(elocal, unbiased=True)
+        energy_std = (energy_var / nwalkers).sqrt()
 
     loss=torch.mean(loss_elocal)   
     
@@ -213,7 +222,7 @@ for epoch in range(start, epochs+1):
     stats['epoch'] = [epoch] #must pass index
     stats['loss'] = loss.item()
     stats['energy_mean'] = energy_mean.item()
-    stats['energy_std'] = energy_var.sqrt().item()
+    stats['energy_std'] = energy_std.item()
     stats['CI'] = gs_CI
     stats['proposal_width'] = sampler.sigma.item()
     stats['acceptance_rate'] = sampler.acceptance_rate
@@ -235,7 +244,7 @@ for epoch in range(start, epochs+1):
                     model_path)
         writer.write_to_file(filename)
 
-    sys.stdout.write("Epoch: %6i | Energy: %6.4f +/- %6.4f | CI: %6.4f | Walltime: %4.2e (s)        \r" % (epoch, energy_mean, energy_var.sqrt(), gs_CI, end-start))
+    sys.stdout.write("Epoch: %6i | Energy: %6.4f +/- %6.4f | CI: %6.4f | Walltime: %4.2e (s)        \r" % (epoch, energy_mean, energy_std, gs_CI, end-start))
     sys.stdout.flush()
 
 print("\nDone")

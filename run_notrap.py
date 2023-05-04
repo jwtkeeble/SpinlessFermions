@@ -8,7 +8,7 @@ torch.set_printoptions(4)
 torch.backends.cudnn.benchmark=True
 torch.set_default_dtype(torch.float32)
 
-device = torch.device('cuda')
+device = torch.device('cpu')
 dtype = str(torch.get_default_dtype()).split('.')[-1]
 
 sys.path.append("./src/")
