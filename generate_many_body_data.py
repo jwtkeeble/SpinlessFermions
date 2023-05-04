@@ -1,7 +1,5 @@
 import torch
 from torch import nn, Tensor
-from functorch import make_functional
-from functorch.experimental import chunk_vmap as xmap
 import os, sys, time
 
 torch.manual_seed(0)
