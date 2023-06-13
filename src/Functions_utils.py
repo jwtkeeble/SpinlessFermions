@@ -1,6 +1,5 @@
 import torch
-from torch.autograd import Function
-from torch import Tensor, nn
+from torch import Tensor
 
 def exclusive_cumsum(x: Tensor, dim: int):
   res = x.cumsum(dim=dim).roll(1)
@@ -17,7 +16,6 @@ def get_log_gamma(log_sigma: Tensor):
   lower = exclusive_cumsum(log_sigma, dim=-1)
   upper = reverse_exclusive_cumsum(log_sigma, dim=-1)
   log_gamma = lower + upper
-
   return log_gamma
   
 def get_log_rho(log_sigma: Tensor):
@@ -46,16 +44,12 @@ def get_Xi_diag(M: Tensor, R: Tensor) -> Tensor:
   """
   A specific use case function which takes the diagonal of M and the rho matrix
   and does,
-
   Xi_ii = sum_{j != i} M_jj \prod_{k != ij} \sigma_k
-
   over a batch of matrices.
   """
-
   diag_M = torch.diagonal(M, offset=0, dim1=-2, dim2=-1).unsqueeze(-2)
   idx=[1] * len(M.shape) #move to relative dims (or not?)
-  idx[-2]=M.shape[-1] #defines [1, 1, N, 1]
+  idx[-2]=M.shape[-1]    #defines [1, 1, N, 1]
   diag_M_repeat = diag_M.repeat(*idx) #vmap with tile/len statement? (repeat_like)
   MR = diag_M_repeat*R
   return get_off_diagonal_elements(MR).sum(dim=-1).diag_embed()
-  

@@ -210,4 +210,5 @@ def str_with_err(value, error):
     digits = -int(np.floor(np.log10(error)))
     return "{0:.{2}f}({1:.0f})".format(value, error*10**digits, digits)
 
-    
+def eyes_like(M: Tensor) -> Tensor:
+    return torch.ones(*M.shape[0:-1], device=M.device, dtype=M.dtype).diag_embed()

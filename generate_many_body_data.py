@@ -223,7 +223,7 @@ sys.stdout.write("DONE\n")
 #===============================================================#
 #                         Save the data                         #
 #===============================================================#
-sys.stdout.write("Saving file: ")
+sys.stdout.write(f"Saving file to {analysis_datapath}: ")
 
 data = {'nbins':nbins,
         'V0':V0,

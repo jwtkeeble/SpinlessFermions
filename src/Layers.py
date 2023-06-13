@@ -5,8 +5,9 @@ import math, sys
 from torch import Tensor
 from typing import Tuple
 
-from Functions import GeneralisedLogSumExpEnvLogDomainStable
-from Functions import NaiveLogSumExpEnvLogDomainStable
+#from Functions import GeneralisedLogSumExpEnvLogDomainStable
+#from Functions import NaiveLogSumExpEnvLogDomainStable
+from Functions import custom_function, naive_function
 
 class EquivariantLayer(nn.Module):
 
@@ -169,6 +170,52 @@ class MatrixToSLogDeterminant(nn.Module):
       :return out: the global sign and global logabs values of the signed
                    log-determinant values of the D Generalised Slater Matrices
     """
-    sgn, logabs, _, _ = GeneralisedLogSumExpEnvLogDomainStable.apply(matrices, log_envs)
-    #sgn, logabs = NaiveLogSumExpEnvLogDomainStable(matrices, log_envs)
+    #sgn, logabs, _, _ = GeneralisedLogSumExpEnvLogDomainStable.apply(matrices, log_envs)
+    ##sgn, logabs = NaiveLogSumExpEnvLogDomainStable(matrices, log_envs)
+    sgn, logabs = custom_function.apply(matrices, log_envs) #replace with naive_function for standard pytorch primitives
     return sgn, logabs - 0.5*self.log_factorial
+  
+class LinearLayer(nn.Module):
+
+  def __init__(self, in_features: int, out_features: int, num_particles: int, bias: bool) -> None:
+    """Linear layer which takes in a batch of matrices and returns a batch of matrices 
+    representing the hidden features in a permutationally equivariant manner. The number 
+    of output features must be greater than the number of number of particles,
+    `out_features` > `num_particles` to ensure that the network's output is non-singular.
+    
+    :param in_features: number of input features for the equivariant layer
+    :type in_features: int
+    
+    :param out_features: number of output features for the equivariant layer
+    :type out_features: int
+    
+    :param num_particles: number of particles for the network
+    :type num_particles: int
+       
+    :param bias: A flag to determine if the `nn.Linear` object uses a bias
+    :type bias: bool
+    
+    :return out: None
+    :type out: None
+    """
+    super(LinearLayer, self).__init__()
+    
+    self.in_features = in_features
+    self.out_features = out_features
+    self.num_particles = num_particles
+    self.bias = bias
+    
+    self.fc = nn.Linear(self.in_features, self.out_features, bias=self.bias)
+
+    
+  def forward(self, h: Tensor) -> Tensor:
+    """The call method of the layer 
+    :param h: Input tensor containing the propagated features from the previous layer
+    :type h: class: `torch.Tensor`
+        
+    :return out: Output tensor containing the output features from the current layer
+                 after being pass through `torch.nn.Linear` and the layer
+                 corresponding non-linear activation function.
+    :rtype out: class: `torch.Tensor`
+    """
+    return self.fc(h)
