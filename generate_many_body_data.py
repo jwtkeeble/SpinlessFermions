@@ -212,12 +212,16 @@ sys.stdout.write("Two-body Density: ")
 xxdata = configurations[:,:,:2].reshape(-1, 2).cpu().detach().numpy()
 
 bin_width = (xmax-xmin)/nbins
-weight = (binomial_coeff(nfermions, 2) / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
+weight = (1. / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
 
 h_tbd, xedges_tbd, yedges_tbd = np.histogram2d(xxdata[:,0], xxdata[:,1],
                                                bins=[nbins, nbins], weights=weight,
                                                range=[[xmin, xmax],[xmin, xmax]],
-                                               density=False)
+                                               density=True)
+integral = np.trapz(np.trapz(h_tbd, yedges_tbd, axis=0), xedges_tbd, axis=0)
+print("Integral: ",integral) #should equal 1.
+h_tbd = h_tbd * binomial_coeff(nfermions, 2)
+
 sys.stdout.write("DONE\n")
 
 #===============================================================#
