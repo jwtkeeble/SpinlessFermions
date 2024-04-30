@@ -27,7 +27,6 @@ import os, sys, time
 torch.manual_seed(0)
 torch.set_printoptions(4)
 torch.backends.cudnn.benchmark=True
-#torch.set_default_dtype(torch.float32)
 if(args.dtype == 'float32'):
     torch.set_default_dtype(torch.float32)
 elif(args.dtype == 'float64'):
@@ -35,7 +34,7 @@ elif(args.dtype == 'float64'):
 else:
     raise NameError(f"Unknown dtype: {args.dtype} selected!")
 
-device = torch.device('cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = str(torch.get_default_dtype()).split('.')[-1]
 
 sys.path.append("./src/")
