@@ -49,6 +49,8 @@ parser.add_argument("-B","--num_batches",   type=int,   default=10000, help="Num
 parser.add_argument("-W","--num_walkers",   type=int,   default=4096,  help="Number of walkers used to generate configuration")
 parser.add_argument("--num_sweeps",         type=int,   default=10,    help="Number of sweeped/discard proposed configurations between accepted batches (The equivalent of thinning constant)")
 
+parser.add_argument("--mode", default='standard', choices=['standard','notrap','nobackflow'], help='Flag to select which system the standard (run.py), notrap (run_notrap.py), and nobackflow (run_nobackflow.py)')
+
 args = parser.parse_args()
 
 nfermions = args.num_fermions #number of input nodes
@@ -95,12 +97,30 @@ sampler = MetropolisHastings(network=net,
 net.pretrain = False #check it's false
 optim = torch.optim.Adam(params=net.parameters(), lr=1e-4) #new optimizer
 
-model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
-                (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
-                 optim.__class__.__name__, False, device, dtype)
-filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.csv" % \
-                (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
-                 optim.__class__.__name__, False, device, dtype)
+mode = args.mode
+if(mode=='standard'):
+    model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+    filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.csv" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+elif(mode=='notrap'):
+    model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s_chkp.pt" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+    filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s.csv" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+elif(mode=='nobackflow'):
+    model_path = "results/energy/checkpoints/no_backflow_A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+    filename = "results/energy/data/no_backflow_A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.csv" % \
+                    (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
+                     optim.__class__.__name__, False, device, dtype)
+else:
+    raise NameError(f"Unknown mode: {mode} selected!")
 
 writer = load_dataframe(filename)
 output_dict = load_model(model_path=model_path, device=device, net=net, optim=optim, sampler=sampler)
