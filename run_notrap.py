@@ -323,16 +323,15 @@ for epoch in range(start, epochs+1):
 
 print("Done")
 
-
 from utils import generate_final_energy, round_to_err, str_with_err
 
 n_batches = 10_000
-energy_stats = generate_final_energy(calc_elocal=calc_elocal,
-                                        sampler=sampler,
-                                        n_batches=n_batches,
-                                        chunk_size=None, #full-batch vectorization
-                                        n_sweeps=1,     #10 is fine, 400 is too much 
-                                        storage_device=torch.device('cpu')) #store on cpu to save memory for GPU
+energy_stats = generate_final_energy(calc_elocal=calc_local_energy_no_trap,
+                                    sampler=sampler,
+                                    n_batches=n_batches,
+                                    chunk_size=None, #full-batch vectorization
+                                    n_sweeps=1,     #10 is fine, 400 is too much 
+                                    storage_device=torch.device('cpu')) #store on cpu to save memory for GPU
 energy_mean=energy_stats['mean']
 error_of_mean=energy_stats['error_of_mean']
 batch_variance=energy_stats['batch_variance']
