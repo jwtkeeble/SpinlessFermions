@@ -1,8 +1,10 @@
 import torch
 from torch import nn, Tensor
+from torch.func import vmap
+
 import time
 from tqdm import tqdm
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union, Optional
 import numpy as np
 import os, warnings
 from Writers import WriteToFile
@@ -27,7 +29,8 @@ def get_params(net, requires_grad: bool=False):
     raise ValueError("")
 
 def sync_time() -> None:
-    torch.cuda.synchronize()
+    if(torch.cuda.is_available()):
+        torch.cuda.synchronize()
     return time.perf_counter()
 
 def clip(elocal: Tensor, clip_factor: int):
@@ -165,27 +168,170 @@ def get_batches_of_measurements(nbatches: int, nwalkers: int, sampler: nn.Module
     samples[batch, :] = calc_local_energy(X).detach_() #just save mean values? compare with autocorrelation method?
 
   return samples
-"""
-def get_batches_of_local_energies(calc_elocal: Callable,
-                                  sampler: nn.Module,
-                                  nbatches: int,
-                                  chunks: int,
-                                  n_sweeps: int,
-                                  storage_device: torch.device):
-    
-    sampler.target_acceptance = None
-   
-    _, params = make_functional(sampler.network) #get params of current network
-    nwalkers = sampler.nwalkers
-    samples = torch.zeros((nbatches, nwalkers), device=storage_device) #store local energy values
-    print("done")
-    for batch in tqdm(range(nbatches)):
-      x, _ = sampler(n_sweeps)
 
-      samples[batch, :] = xmap(calc_elocal, in_dims=(None, 0), chunks=chunks)(params, x).detach_().to(storage_device)
+def next_pow_two(n):
+    i = 1
+    while(i < n):
+        i = i << 1
+    return i
+
+def autocorr_1d(x: Tensor):
+    x = torch.atleast_1d(x)
+    if(len(x.shape) != 1):
+        raise ValueError("Invalid shape")
+    n = next_pow_two(len(x))
+
+    f = torch.fft.fft(x - torch.mean(x), n=2*n)
+    acf = torch.fft.ifft(f * torch.conj(f))[:len(x)].real
+    acf /= acf[0]
+    return acf
+
+def auto_window(taus: Tensor, c: float) -> Tensor: 
+    m = (torch.arange(len(taus), dtype=taus.dtype, device=taus.device, requires_grad=False) < c * taus).float()
+    out = torch.where(torch.any(m), torch.argmin(m, dim=-1), taus.shape[0]-1)
+    return out
+
+def integrated_time(x: Tensor, c: float=5) -> Tensor:
+    if(x.ndim != 1):
+        raise ValueError("Invalid shape")
+    f = autocorr_1d(x)
+
+    taus = 2.0 * torch.cumsum(f, dim=-1) - 1.0
+    window = auto_window(taus, c)
+    return torch.gather(taus,0,window) 
+
+def _batch_variance(samples: Tensor) -> Tensor:
+    return torch.var(torch.mean(samples, dim=1), dim=0) #multiple by N/M (N=shape[-1], M=shape[0] number of chains)
+
+def _calc_split_R_hat(samples: Tensor) -> float:
+    #https://arxiv.org/pdf/1903.08008
+    N = samples.shape[0] #number of samples per chain
+    M = samples.shape[1] #number of chains
+    mean_along_samples = torch.mean(samples, dim=0)
+    mean = torch.mean(samples)
+    B = (N/(M-1)) * torch.sum((mean_along_samples - mean).pow(2))
+    s2m = torch.var(samples, dim=-1)
+    W = torch.mean(s2m)
+
+    Var = ((N-1)/N)*W + (1/N)*B
+    Rhat = torch.sqrt(Var/W)
+    Seff_BDA2 = Var/B
+    return Rhat, Seff_BDA2
+
+
+def _get_blocks(data, block_size):
+    chain_length = data.shape[1]
+
+    n_blocks = int(np.floor(chain_length / float(block_size)))
+
+    return data[:, 0 : n_blocks * block_size].reshape((-1, block_size)).mean(axis=1)
+
+def _block_variance(data, l):
+    blocks = _get_blocks(data, l)
+    ts = blocks.nelement()
+    if ts > 0:
+        return torch.var(blocks), ts
+    else:
+        return np.nan, 0
+
+def generate_stats(samples: Tensor, BLOCK_SIZE: int=32) -> Tensor:
+    if(samples.ndim==1):
+        samples=samples.unsqueeze(-1) #chain length of 1
+    nwalkers, n_batches = samples.shape
+
+    mean = torch.mean(samples)
+    variance = torch.var(samples)
+
+    taus = vmap(integrated_time)(samples)
+    tau_min = torch.min(taus, dim=-1).values
+    tau_avg = torch.mean(taus, dim=-1)
+    tau_std = torch.std(taus, dim=-1, unbiased=True)
+    tau_max = torch.max(taus, dim=-1).values
+
+    batch_var = _batch_variance(samples=samples)
+    error_of_mean = torch.sqrt(batch_var / n_batches)
+    
+    if n_batches > 1:
+        error_of_mean = (batch_var / n_batches)**0.5
+        R_hat, ESS = _calc_split_R_hat(samples=samples)
+    else:
+        l_block = max(1, samples.shape[1] // BLOCK_SIZE)
+        block_var, n_blocks = _block_variance(samples, l_block)
+        error_of_mean = (block_var / n_blocks)**0.5
+        R_hat = torch.scalar_tensor(torch.nan)
+        ESS = torch.scalar_tensor(torch.nan)
+
+    _stats = {'mean':mean,
+              'error_of_mean':error_of_mean,
+              'batch_variance':batch_var,
+              'variance':variance,
+              'R_hat':R_hat,
+              'ESS':ESS,
+              'tau_min':tau_min,
+              'tau_avg':tau_avg,
+              'tau_std':tau_std,
+              'tau_max':tau_max}
+    return _stats
+
+def generate_samples(calc_elocal: Callable,
+                     sampler: nn.Module,
+                     n_batches: int,
+                     chunk_size: Optional[int],
+                     n_sweeps: int,
+                     storage_device: Union[torch.device, str]):
+    
+    #params = dict(sampler.network.named_parameters())
+    nwalkers = sampler.nwalkers
+    samples = torch.zeros((n_batches, nwalkers), device=storage_device)
+    sampler.target_acceptance = None # TODO: set sampler.std to be fixed
+    for batch in tqdm(range(n_batches)):
+        x = sampler(n_sweeps)[0] 
+        x=x.requires_grad_(True)
+        samples[batch, :] = calc_elocal(x).detach_() 
+    samples = samples.t()
     return samples
 
-"""
+def generate_final_energy(calc_elocal: Callable,
+                          sampler: nn.Module,
+                          n_batches: int,
+                          chunk_size: Optional[int],
+                          n_sweeps: int,
+                          storage_device: Union[torch.device, str]):
+    r"""Simple function to get batches of measurements with ease.
+        Pass in sampler and function of which you want measurements with the number of walkers and burn_in.
+
+            :param calc_elocal: The number of batches of measurements
+            :type calc_elocal: Callable
+
+            :param sampler: The Metropolis-Hastings Sampler class that returns many-body positions
+            :type sampler: class: `nn.Module`
+
+            :param n_batches: The number of batches of MCMC sampling sweeps (the number of walkers within each batch is inferred from the Sampler object)
+            :type n_batches: int
+
+            :param chunk_size: The chunk size of the vectorisation map when computing the local energy (allows to mini-batch vectorised operation to avoid OOM issues.)
+            :type chunk_size: int
+            
+            :param n_sweeps: The burn-in or 'thermalisation' time of the Metropolis-Hastings Sampler between measurements of the local energy.
+            :type n_sweeps: int
+
+            :param storage_device: A `torch.device` object which specifies where the local energy values are stored (can help alleviate OOM issues.) 
+            :type storage_device: `torch.device`
+
+            :return samples: Returns a Tensor containing all samples of the given function
+            :type samples: class: `Union[torch.Tensor, str]`
+    """
+    samples = generate_samples(calc_elocal=calc_elocal,
+                               sampler=sampler,
+                               n_batches=n_batches,
+                               chunk_size=chunk_size,
+                               n_sweeps=n_sweeps,
+                               storage_device=storage_device)
+
+    _stats = generate_stats(samples=samples)
+
+    return _stats
+
 def round_to_err(x, dx):
     """
     Rounds x to first significant figure of dx (i.e. +- 1 sig fig of error)

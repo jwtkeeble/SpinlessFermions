@@ -1,7 +1,7 @@
 import torch
 from torch import nn, Tensor
-
-import os, sys, time
+import numpy as np
+import sys
 
 torch.manual_seed(0)
 torch.set_printoptions(4)
@@ -11,7 +11,8 @@ torch.set_default_dtype(torch.float32)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 dtype = str(torch.get_default_dtype()).split('.')[-1]
 
-sys.path.append("./src/")
+DIR='./'
+sys.path.append(DIR+"src/")
 
 from Models import vLogHarmonicNet
 from Samplers import MetropolisHastings
@@ -169,10 +170,10 @@ print("\n")
 net.pretrain = False #check it's false
 optim = torch.optim.Adam(params=net.parameters(), lr=1e-4) #new optimizer
 
-model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
+model_path = DIR+"results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.4e_S%4.4e_%s_PT_%s_device_%s_dtype_%s_chkp.pt" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
                  optim.__class__.__name__, False, device, dtype)
-filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_device_%s_dtype_%s.csv" % \
+filename = DIR+"results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.4e_S%4.4e_%s_PT_%s_device_%s_dtype_%s.csv" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
                  optim.__class__.__name__, False, device, dtype)
 
@@ -248,10 +249,10 @@ print("\nEnergy minimisation is complete")
 net.pretrain = False #check it's false
 optim = torch.optim.Adam(params=net.parameters(), lr=1e-4) #new optimizer
 
-model_path = "results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s_chkp.pt" % \
+model_path = DIR+"results/energy/checkpoints/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.4e_S%4.4e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s_chkp.pt" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
                  optim.__class__.__name__, False, device, dtype)
-filename = "results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e_S%4.2e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s.csv" % \
+filename = DIR+"results/energy/data/A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.4e_S%4.4e_%s_PT_%s_NO_TRAP_device_%s_dtype_%s.csv" % \
                 (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, \
                  optim.__class__.__name__, False, device, dtype)
 
@@ -321,3 +322,46 @@ for epoch in range(start, epochs+1):
     sys.stdout.flush()
 
 print("Done")
+
+
+from utils import generate_final_energy, round_to_err, str_with_err
+
+n_batches = 10_000
+energy_stats = generate_final_energy(calc_elocal=calc_elocal,
+                                        sampler=sampler,
+                                        n_batches=n_batches,
+                                        chunk_size=None, #full-batch vectorization
+                                        n_sweeps=1,     #10 is fine, 400 is too much 
+                                        storage_device=torch.device('cpu')) #store on cpu to save memory for GPU
+energy_mean=energy_stats['mean']
+error_of_mean=energy_stats['error_of_mean']
+batch_variance=energy_stats['batch_variance']
+variance=energy_stats['variance']
+R_hat=energy_stats['R_hat']
+ESS=energy_stats['ESS']
+tau_min=energy_stats['tau_min']
+tau_avg=energy_stats['tau_avg']
+tau_std=energy_stats['tau_std']
+tau_max=energy_stats['tau_max']
+
+energy_mean, error_of_mean = round_to_err(energy_mean.item(), error_of_mean.item())
+energy_str = str_with_err(energy_mean, error_of_mean)
+print(f"Energy: {energy_str} | R_hat: {R_hat:6.4f}")
+
+final_energy_str = DIR+"results/final/FINAL_NOTRAP_A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.4e_S%4.4e_%s_PT_%s_device_%s_dtype_%s.npz" % \
+                (nfermions, num_hidden, num_layers, num_dets, func.__class__.__name__, nwalkers, preepochs, V0, sigma0, optim.__class__.__name__, False, 
+device, dtype)
+print(f"Saving to {final_energy_str}")
+data = {'energy_mean': energy_mean,
+        'error_of_mean': error_of_mean,
+        'energy_str':energy_str,
+        'batch_variance':batch_variance,
+        'variance':variance,
+        'R_hat':R_hat,
+        'ESS':ESS,
+        'tau_min':tau_min,
+        'tau_avg':tau_avg,
+        'tau_std':tau_std,
+        'tau_max':tau_max,
+        'CI':gs_CI}
+np.savez(final_energy_str, **data)
