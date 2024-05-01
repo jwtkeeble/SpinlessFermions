@@ -144,7 +144,7 @@ analysis_datapath = "analysis/PHYS_A%02i_H%03i_L%02i_D%02i_%s_W%04i_P%06i_V%4.2e
 
 #======================================================================================#
 
-nbins = 250#100
+nbins = 250
 
 def binomial_coeff(n,r):
     return math.factorial(n) / math.factorial(r) / math.factorial(n-r)
@@ -185,8 +185,7 @@ p = np.nan_to_num(p, nan=0.)
 h_obdm, xedges_obdm, yedges_obdm = np.histogram2d(xx,yy,
                                                   bins=[nbins,nbins], range=data_range,
                                                   weights=p, density=True)
-#trace norm the histogram
-rho_matrix = nfermions * h_obdm / np.trace(h_obdm)
+rho_matrix = nfermions * h_obdm / np.trace(h_obdm) #trace norm the histogram
 
 sys.stdout.write("DONE\n")
 
@@ -212,22 +211,18 @@ sys.stdout.write("Two-body Density: ")
 xxdata = configurations[:,:,:2].reshape(-1, 2).cpu().detach().numpy()
 
 bin_width = (xmax-xmin)/nbins
-weight = (1. / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
+weight = (binomial_coeff(nfermions, 2) / bin_width**2) * np.ones_like(xxdata[:,0]) / xxdata.size
 
 h_tbd, xedges_tbd, yedges_tbd = np.histogram2d(xxdata[:,0], xxdata[:,1],
                                                bins=[nbins, nbins], weights=weight,
                                                range=[[xmin, xmax],[xmin, xmax]],
-                                               density=True)
-integral = np.trapz(np.trapz(h_tbd, yedges_tbd, axis=0), xedges_tbd, axis=0)
-print("Integral: ",integral) #should equal 1.
-h_tbd = h_tbd * binomial_coeff(nfermions, 2)
-
+                                               density=False)
 sys.stdout.write("DONE\n")
 
 #===============================================================#
 #                         Save the data                         #
 #===============================================================#
-sys.stdout.write(f"Saving file to {analysis_datapath}: ")
+sys.stdout.write("Saving file: ")
 
 data = {'nbins':nbins,
         'V0':V0,
