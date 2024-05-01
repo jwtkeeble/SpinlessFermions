@@ -201,6 +201,7 @@ for epoch in range(start, epochs+1):
     
     with torch.no_grad():
         energy_var, energy_mean = torch.var_mean(elocal, unbiased=True)
+        energy_std = (energy_var / nwalkers).sqrt()
 
     loss=torch.mean(loss_elocal)   
     
@@ -213,7 +214,7 @@ for epoch in range(start, epochs+1):
     stats['epoch'] = [epoch] #must pass index
     stats['loss'] = loss.item()
     stats['energy_mean'] = energy_mean.item()
-    stats['energy_std'] = energy_var.sqrt().item()
+    stats['energy_std'] = energy_std.item()
     stats['CI'] = gs_CI
     stats['proposal_width'] = sampler.sigma.item()
     stats['acceptance_rate'] = sampler.acceptance_rate
@@ -281,6 +282,7 @@ for epoch in range(start, epochs+1):
     
     with torch.no_grad():
         energy_var, energy_mean = torch.var_mean(elocal, unbiased=True)
+        energy_std = (energy_var / nwalkers).sqrt()
 
     loss=torch.mean(loss_elocal)   
     
@@ -293,7 +295,7 @@ for epoch in range(start, epochs+1):
     stats['epoch'] = [epoch] #must pass index
     stats['loss'] = loss.item()
     stats['energy_mean'] = energy_mean.item()
-    stats['energy_std'] = energy_var.sqrt().item()
+    stats['energy_std'] = energy_std.item()
     stats['CI'] = gs_CI
     stats['proposal_width'] = sampler.sigma.item()
     stats['acceptance_rate'] = sampler.acceptance_rate
